@@ -1,6 +1,6 @@
 # do it calendar
 
-A student calendar for assignments and social events. The production stack is Vite + React on Vercel, with Supabase Auth and Postgres for authentication, OTP email verification, profiles, modules, people groups, assignments, and events.
+A student calendar for assignments and social events. The production stack is Vite + React on Vercel, with Supabase Auth and Postgres for password authentication, email confirmation, password recovery, profiles, modules, people groups, assignments, and events.
 
 ## Local development
 
@@ -15,25 +15,18 @@ Without Supabase variables, development uses a browser-only demo workspace. Prod
 
 1. Create a Supabase project directly or install Supabase from the Vercel Marketplace.
 2. Open the Supabase SQL editor and run [`supabase/schema.sql`](supabase/schema.sql).
-3. In Supabase Auth, keep **Confirm email** enabled.
-4. In **Auth → Email Templates**, update both **Confirm signup** and **Reset password** to show the six-digit token using `{{ .Token }}`. For example:
-
-   ```html
-   <h2>Your do it verification code</h2>
-   <p>Enter this code in the app:</p>
-   <p style="font-size: 28px; font-weight: 700">{{ .Token }}</p>
-   ```
-
-5. Configure custom SMTP in Supabase for production delivery. Resend can be used as the SMTP provider; verify your sending domain first. Supabase's trial mailer is only intended for testing and is heavily rate-limited.
-6. Add these variables to Vercel for Production and Preview environments:
+3. In Supabase Auth, keep **Confirm email** enabled. The app uses Supabase's secure confirmation and password-recovery links, so the default templates work without a paid sender domain.
+4. Add these variables to Vercel for Production and Preview environments:
 
    ```text
    VITE_SUPABASE_URL=https://your-project.supabase.co
    VITE_SUPABASE_ANON_KEY=your-anon-key
    ```
 
-7. Set the Supabase Auth **Site URL** to the production Vercel/custom-domain URL. Add localhost and Vercel preview URLs to the allowed redirect list when needed.
-8. Redeploy the Vercel project.
+5. Set the Supabase Auth **Site URL** to the production Vercel/custom-domain URL. Add localhost and Vercel preview URLs to the allowed redirect list when needed.
+6. Redeploy the Vercel project.
+
+Supabase's built-in mailer is suitable for a hobby project and initial testing, but it has strict rate limits. Add a verified domain and custom SMTP later if the app needs higher-volume or branded email delivery.
 
 Only the Supabase anon key belongs in the browser. Never expose the service-role key. Data access is enforced by the Row Level Security policies in the schema.
 

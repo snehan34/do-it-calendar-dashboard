@@ -82,7 +82,11 @@ input:focus, select:focus { border-color: var(--text-subtle); }
 .forgot { float: right; margin-top: 10px; }
 .resend { display: block; margin: 11px 0 0 auto; }
 .auth-switch { margin-top: 24px; color: var(--ash); text-align: center; font-size: 13px; }
-.otp { font-size: 18px; letter-spacing: 7px; }
+.email-link-card { padding: 20px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); text-align: center; }
+.email-link-card > span { display: grid; place-items: center; width: 42px; height: 42px; margin: 0 auto 14px; border: 1px solid var(--control-border); border-radius: 50%; color: var(--ember); font-size: 19px; }
+.email-link-card p { margin: 0; color: var(--ash); font-size: 13px; line-height: 1.55; }
+.email-link-card .wide { margin-top: 18px; padding: 12px 16px; }
+.return-login { display: block; margin: 16px auto 0; }
 .demo-note { margin-top: 18px; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .demo-note span { color: var(--ember); font-size: 10px; font-weight: 700; letter-spacing: .13em; }
 .demo-note p { margin: 7px 0 0; color: var(--ash); font-size: 12px; }

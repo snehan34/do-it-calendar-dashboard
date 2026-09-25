@@ -58,27 +58,43 @@ function ThemeToggle({ theme, onToggle, className = '' }) {
   return <button className={`theme-toggle ${className}`} onClick={onToggle} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}><span>{theme === 'dark' ? '☼' : '☾'}</span>{theme === 'dark' ? 'Light' : 'Dark'}</button>;
 }
 
-function Auth({ onDone, theme, onThemeChange, demoMode }) {
-  const [mode, setMode] = useState('login');
+function Auth({ onDone, onRecoveryComplete, recoveryMode = false, theme, onThemeChange, demoMode }) {
+  const [mode, setMode] = useState(recoveryMode ? 'recovery' : 'login');
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [working, setWorking] = useState(false);
-  const title = mode === 'login' ? 'Own your time.' : mode === 'signup' ? (step === 2 ? 'Check your inbox.' : 'Start planning.') : (step === 2 ? 'Choose a new password.' : 'Reset your password.');
+
+  useEffect(() => {
+    if (recoveryMode) {
+      setMode('recovery');
+      setStep(1);
+    }
+  }, [recoveryMode]);
+
+  const title = mode === 'login'
+    ? 'Own your time.'
+    : mode === 'signup'
+      ? (step === 2 ? 'Check your inbox.' : 'Start planning.')
+      : mode === 'recovery'
+        ? 'Choose a new password.'
+        : (step === 2 ? 'Check your inbox.' : 'Reset your password.');
   const subtitle = mode === 'login'
     ? 'One place for every deadline, study session, and plan.'
     : mode === 'signup' && step === 2
-      ? `We sent a six-digit verification code to ${email || 'your email address'}.`
+      ? `We sent a secure confirmation link to ${email || 'your email address'}.`
       : mode === 'forgot' && step === 2
-        ? 'Enter your reset code and create a secure password.'
+        ? `We sent a secure password-reset link to ${email || 'your email address'}.`
         : mode === 'signup'
           ? 'Bring school and the rest of your life into one clear view.'
-          : 'Enter your email and we’ll send you a reset code.';
+          : mode === 'recovery'
+            ? 'Use at least eight characters and keep it unique to this account.'
+            : 'Enter your email and we’ll send you a secure reset link.';
 
   async function submit(event) {
     event.preventDefault();
@@ -88,6 +104,7 @@ function Auth({ onDone, theme, onThemeChange, demoMode }) {
     try {
       if (demoMode) {
         if ((mode === 'signup' || mode === 'forgot') && step === 1) setStep(2);
+        else if (mode === 'recovery') onRecoveryComplete?.();
         else onDone();
         return;
       }
@@ -95,26 +112,28 @@ function Auth({ onDone, theme, onThemeChange, demoMode }) {
         const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (authError) throw authError;
         onDone(data.session);
-      } else if (mode === 'signup' && step === 1) {
-        const { data, error: authError } = await supabase.auth.signUp({ email: email.trim(), password, options: { data: { full_name: name.trim() } } });
+      } else if (mode === 'signup') {
+        const { data, error: authError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { data: { full_name: name.trim() }, emailRedirectTo: window.location.origin },
+        });
         if (authError) throw authError;
         if (data.session) onDone(data.session);
         else setStep(2);
-      } else if (mode === 'signup') {
-        const { data, error: authError } = await supabase.auth.verifyOtp({ email: email.trim(), token: otp, type: 'email' });
-        if (authError) throw authError;
-        onDone(data.session);
-      } else if (step === 1) {
-        const { error: authError } = await supabase.auth.resetPasswordForEmail(email.trim());
+      } else if (mode === 'forgot') {
+        const { error: authError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: `${window.location.origin}/?reset=1`,
+        });
         if (authError) throw authError;
         setStep(2);
       } else {
-        const { error: verifyError } = await supabase.auth.verifyOtp({ email: email.trim(), token: otp, type: 'recovery' });
-        if (verifyError) throw verifyError;
+        if (newPassword !== confirmPassword) throw new Error('The passwords do not match.');
         const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
         if (updateError) throw updateError;
-        const { data: sessionData } = await supabase.auth.getSession();
-        onDone(sessionData.session);
+        window.history.replaceState({}, '', window.location.pathname);
+        setNotice('Password updated. Your account is ready.');
+        onRecoveryComplete?.();
       }
     } catch (submitError) {
       setError(submitError.message || 'Something went wrong. Please try again.');
@@ -123,20 +142,20 @@ function Auth({ onDone, theme, onThemeChange, demoMode }) {
     }
   }
 
-  async function resendCode() {
+  async function resendLink() {
     setError('');
     setNotice('');
     setWorking(true);
     try {
       if (!demoMode) {
         const result = mode === 'signup'
-          ? await supabase.auth.resend({ type: 'signup', email: email.trim() })
-          : await supabase.auth.resetPasswordForEmail(email.trim());
+          ? await supabase.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: window.location.origin } })
+          : await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/?reset=1` });
         if (result.error) throw result.error;
       }
-      setNotice('A new code has been sent.');
+      setNotice('A new secure link has been sent.');
     } catch (resendError) {
-      setError(resendError.message || 'The code could not be sent.');
+      setError(resendError.message || 'The email could not be sent.');
     } finally {
       setWorking(false);
     }
@@ -147,8 +166,11 @@ function Auth({ onDone, theme, onThemeChange, demoMode }) {
     setStep(1);
     setError('');
     setNotice('');
-    setOtp('');
+    setNewPassword('');
+    setConfirmPassword('');
   }
+
+  const awaitingEmail = (mode === 'signup' || mode === 'forgot') && step === 2;
 
   return <main className="auth-page">
     <section className="auth-promo">
@@ -160,25 +182,25 @@ function Auth({ onDone, theme, onThemeChange, demoMode }) {
       <ThemeToggle theme={theme} onToggle={onThemeChange} className="auth-theme" />
       <div className="auth-box">
         <div className="mobile-logo"><Logo /></div>
-        <button className="back-link" onClick={() => mode !== 'login' && changeMode('login')}>{mode !== 'login' ? '← Back to sign in' : ''}</button>
+        <button className="back-link" onClick={() => mode !== 'login' && mode !== 'recovery' && changeMode('login')}>{mode !== 'login' && mode !== 'recovery' ? '← Back to sign in' : ''}</button>
         <div className="auth-heading"><span className="eyebrow">DO IT CALENDAR</span><h2>{title}</h2><p>{subtitle}</p></div>
-        <form onSubmit={submit}>
-          {mode === 'signup' && step === 1 && <label>Full name<input required maxLength="100" placeholder="Alex Morgan" value={name} onChange={event => setName(event.target.value)} /></label>}
-          {(mode !== 'signup' || step === 1) && <label>Email address<input type="email" autoComplete="email" required placeholder="you@school.edu" value={email} onChange={event => setEmail(event.target.value)} /></label>}
+        {!awaitingEmail && <form onSubmit={submit}>
+          {mode === 'signup' && <label>Full name<input required maxLength="100" autoComplete="name" placeholder="Alex Morgan" value={name} onChange={event => setName(event.target.value)} /></label>}
+          {mode !== 'recovery' && <label>Email address<input type="email" autoComplete="email" required placeholder="you@school.edu" value={email} onChange={event => setEmail(event.target.value)} /></label>}
           {mode === 'login' && <><label>Password<input type="password" autoComplete="current-password" minLength="8" required placeholder="••••••••" value={password} onChange={event => setPassword(event.target.value)} /></label><button type="button" className="text-link forgot" onClick={() => changeMode('forgot')}>Forgot password?</button></>}
-          {mode === 'signup' && step === 1 && <label>Password<input type="password" autoComplete="new-password" minLength="8" required placeholder="At least 8 characters" value={password} onChange={event => setPassword(event.target.value)} /></label>}
-          {step === 2 && <><label>{mode === 'signup' ? 'Verification code' : 'Reset code'}<input required inputMode="numeric" pattern="[0-9]{6}" maxLength="6" placeholder="0 0 0 0 0 0" className="otp" value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, ''))} /></label>{mode === 'forgot' && <label>New password<input type="password" autoComplete="new-password" minLength="8" required placeholder="At least 8 characters" value={newPassword} onChange={event => setNewPassword(event.target.value)} /></label>}<button type="button" className="resend" disabled={working} onClick={resendCode}>Resend code</button></>}
+          {mode === 'signup' && <label>Password<input type="password" autoComplete="new-password" minLength="8" required placeholder="At least 8 characters" value={password} onChange={event => setPassword(event.target.value)} /></label>}
+          {mode === 'recovery' && <><label>New password<input type="password" autoComplete="new-password" minLength="8" required placeholder="At least 8 characters" value={newPassword} onChange={event => setNewPassword(event.target.value)} /></label><label>Confirm new password<input type="password" autoComplete="new-password" minLength="8" required placeholder="Enter it again" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} /></label></>}
           {error && <div className="form-message error" role="alert">{error}</div>}
-          <button className="primary wide" type="submit" disabled={working}>{working ? 'Please wait…' : mode === 'login' ? 'Sign in →' : mode === 'signup' && step === 1 ? 'Continue →' : mode === 'signup' ? 'Verify account →' : step === 1 ? 'Send reset code →' : 'Reset password →'}</button>
-        </form>
+          <button className="primary wide" type="submit" disabled={working}>{working ? 'Please wait…' : mode === 'login' ? 'Sign in →' : mode === 'signup' ? 'Create account →' : mode === 'forgot' ? 'Send reset link →' : 'Update password →'}</button>
+        </form>}
+        {awaitingEmail && <div className="email-link-card"><span aria-hidden="true">✉</span><p>Open the email from Supabase and use its link. The link is single-purpose and expires automatically.</p><button type="button" className="secondary wide" disabled={working} onClick={resendLink}>{working ? 'Sending…' : 'Resend email'}</button><button type="button" className="text-link return-login" onClick={() => changeMode('login')}>Return to sign in</button>{error && <div className="form-message error" role="alert">{error}</div>}</div>}
         {notice && <div className="inline-notice" role="status">✓ {notice}</div>}
         {demoMode && mode === 'login' && <div className="demo-note"><span>LOCAL DEMO</span><p>Use <b>alex@school.edu</b> with <b>demo1234</b></p></div>}
-        {mode === 'login' ? <p className="auth-switch">New here? <button className="text-link" onClick={() => changeMode('signup')}>Create an account</button></p> : <p className="auth-switch">Already registered? <button className="text-link" onClick={() => changeMode('login')}>Sign in</button></p>}
+        {mode === 'login' ? <p className="auth-switch">New here? <button className="text-link" onClick={() => changeMode('signup')}>Create an account</button></p> : !awaitingEmail && mode !== 'recovery' ? <p className="auth-switch">Already registered? <button className="text-link" onClick={() => changeMode('login')}>Sign in</button></p> : null}
       </div>
     </section>
   </main>;
 }
-
 function itemColor(item, moduleList, groupList) {
   const collection = item.kind === 'assignment' ? moduleList : groupList;
   return collection.find(entry => entry.name === (item.module || item.group))?.color || '#77726b';
@@ -524,13 +546,18 @@ function SetupRequired({ theme, onThemeChange }) {
 function App() {
   const [demoLoggedIn, setDemoLoggedIn] = useState(false);
   const [session, setSession] = useState(null);
+  const [recovering, setRecovering] = useState(() => new URLSearchParams(window.location.search).has('reset'));
   const [authLoading, setAuthLoading] = useState(isSupabaseConfigured);
   const [theme, setTheme] = useStoredState('do-it-theme', 'dark');
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthLoading(false); });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => { setSession(nextSession); setAuthLoading(false); });
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'PASSWORD_RECOVERY') setRecovering(true);
+      setSession(nextSession);
+      setAuthLoading(false);
+    });
     return () => listener.subscription.unsubscribe();
   }, []);
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
@@ -542,9 +569,9 @@ function App() {
   if (!isSupabaseConfigured && import.meta.env.PROD) return <SetupRequired theme={theme} onThemeChange={toggleTheme} />;
   if (authLoading) return <div className="boot-screen"><Logo /><span /></div>;
   const loggedIn = demoMode ? demoLoggedIn : Boolean(session);
-  return loggedIn
+  return loggedIn && !recovering
     ? <Dashboard theme={theme} onThemeChange={toggleTheme} user={session?.user} demoMode={demoMode} onSignOut={signOut} />
-    : <Auth onDone={nextSession => { if (demoMode) setDemoLoggedIn(true); else if (nextSession) setSession(nextSession); }} theme={theme} onThemeChange={toggleTheme} demoMode={demoMode} />;
+    : <Auth recoveryMode={recovering && Boolean(session)} onRecoveryComplete={() => setRecovering(false)} onDone={nextSession => { if (demoMode) setDemoLoggedIn(true); else if (nextSession) setSession(nextSession); }} theme={theme} onThemeChange={toggleTheme} demoMode={demoMode} />;
 }
 
 createRoot(document.getElementById('root')).render(<App />);
